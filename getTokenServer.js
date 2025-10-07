@@ -20,13 +20,21 @@ let latestAccessToken = null;
 let latestRefreshToken = null;
 
 // --- Token persistence helpers ---
+// Path to tokens.json file - this file is created automatically when OAuth authentication completes
+// The file stores access and refresh tokens so they persist between server restarts
+// Without this file, users would need to re-authenticate every time the server restarts
 const TOKEN_FILE = path.join(__dirname, 'tokens.json');
 
-// Save tokens to disk for persistence
+// Save tokens to disk for persistence between server restarts
+// This function is called after successful OAuth authentication
+// Creates tokens.json file with access and refresh tokens in JSON format
 function saveTokens(tokens) {
   fs.writeFileSync(TOKEN_FILE, JSON.stringify(tokens, null, 2));
 }
-// Load tokens from disk if available
+// Load tokens from disk if available on server startup
+// Checks if tokens.json exists and loads saved tokens into memory
+// If file doesn't exist or is corrupted, returns empty object (no tokens)
+// This allows the server to use previously saved tokens without re-authentication
 function loadTokens() {
   if (fs.existsSync(TOKEN_FILE)) {
     try {
@@ -35,7 +43,9 @@ function loadTokens() {
   }
   return {};
 }
-// Load tokens into memory on startup
+// Load tokens into memory on startup - restores previous authentication state
+// If tokens.json exists from previous session, loads them automatically
+// If no tokens.json file exists, variables remain null (requiring new authentication)
 ({ accessToken: latestAccessToken, refreshToken: latestRefreshToken } = loadTokens());
 
 // Serve static files (including UReport.html) from the current directory
@@ -72,8 +82,12 @@ app.get("/login/oauth2/code/goto", async (req, res) => {
   try {
     // Exchange the authorization code for an access token
     const token = await getToken(req.query.code, SCOPE);
+    // Store tokens in memory for immediate use by the proxy endpoint
     latestAccessToken = token.access_token; // Store for proxy use
     latestRefreshToken = token.refresh_token;
+    // IMPORTANT: This line creates the tokens.json file automatically
+    // The file is written to disk so tokens persist between server restarts
+    // Without this file, users would need to re-authenticate every time
     saveTokens({ accessToken: latestAccessToken, refreshToken: latestRefreshToken });
     // Inform the user that the token was received
     res.send("Access token received. Check your terminal.");
